@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>手机内存RAM和存储ROM详细价格表</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --color-background-primary: #ffffff;
+            --color-background-secondary: #f5f5f5;
+            --color-text-primary: #000000;
+            --color-text-secondary: #888888;
+            --color-border-tertiary: rgba(0,0,0,0.15);
+            --border-radius-lg: 12px;
+            --border-radius-md: 8px;
+            --font-sans: 'Segoe UI', system-ui, sans-serif;
+        }
+        body { font-family: var(--font-sans); margin:0; padding:20px; background: var(--color-background-primary); color: var(--color-text-primary); }
+        .container { max-width: 1400px; margin:0 auto; }
+        h2 { font-size: 15px; font-weight: 500; margin:0 0 16px 0; }
+        .subtitle { font-size: 13px; font-weight: 400; color: var(--color-text-secondary); margin-left: 8px; }
+        .update-badge { display:inline-block; font-size:11px; background:rgba(83,74,183,0.1); color:#534AB7; padding:2px 8px; border-radius:4px; margin-left:8px; vertical-align:middle; }
+        .tabs { display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--color-border-tertiary); padding-bottom:8px; }
+        .tab { padding:8px 16px; border-radius:6px 6px 0 0; font-size:13px; cursor:pointer; background:var(--color-background-secondary); border:none; color:var(--color-text-primary); }
+        .tab.active { background:#534AB7; color:white; }
+        .tab:hover:not(.active) { background:#e8e8e8; }
+        .tab-content { display:none; }
+        .tab-content.active { display:block; }
+        .table-wrapper { overflow-x:auto; border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); margin-bottom:20px; }
+        table { width:100%; border-collapse:collapse; font-size:13px; min-width:1200px; }
+        th, td { padding:8px 10px; text-align:right; border-bottom:1px solid var(--color-border-tertiary); white-space:nowrap; }
+        th:first-child, td:first-child { text-align:left; position:sticky; left:0; background:white; z-index:1; font-weight:600; min-width:140px; }
+        th { background:var(--color-background-secondary); font-weight:600; font-size:12px; position:sticky; top:0; z-index:2; }
+        th:first-child { z-index:3; }
+        tr:hover td { background:#f9f9ff; }
+        tr:hover td:first-child { background:#f0f0ff; }
+        .predict-col { background:#fffde7 !important; }
+        tr:hover .predict-col { background:#f6f6c6 !important; }
+        .chart-container { margin-top:20px; padding:20px; border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); }
+        .selected-row { background:#e8e6ff !important; }
+        .loading { color:var(--color-text-secondary); font-size:14px; padding:40px; text-align:center; }
+        .error { color:#d32f2f; font-size:14px; padding:40px; text-align:center; }
+        .note { font-size:12px; color:var(--color-text-secondary); margin-top:8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>手机内存RAM和存储ROM详细价格表
+            <span class="subtitle">单位：USD | 数据来源：TrendForce / CFM闪存市场</span>
+            <span class="update-badge" id="update-date">加载中...</span>
+        </h2>
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('ram')">内存 (RAM)</button>
+            <button class="tab" onclick="switchTab('rom')">存储 (ROM)</button>
+            <button class="tab" onclick="switchTab('combined')">组合方案 (uMCP)</button>
+        </div>
+        <div id="tab-ram" class="tab-content active">
+            <div class="table-wrapper"><table id="table-ram"></table></div>
+            <div class="chart-container"><canvas id="chart-ram"></canvas></div>
+        </div>
+        <div id="tab-rom" class="tab-content">
+            <div class="table-wrapper"><table id="table-rom"></table></div>
+            <div class="chart-container"><canvas id="chart-rom"></canvas></div>
+        </div>
+        <div id="tab-combined" class="tab-content">
+            <div class="table-wrapper"><table id="table-combined"></table></div>
+            <div class="chart-container"><canvas id="chart-combined"></canvas></div>
+        </div>
+        <div class="note">💡 点击表格行查看价格趋势图 | 黄色背景列为预测数据 | 数据更新后页面自动刷新</div>
+    </div>
+
+    <script>
+    let appData = null;
+    let charts = {};
+
+    async function loadData() {
+        try {
+            const resp = await fetch('data.json?t=' + Date.now());
+            if (!resp.ok) throw new Error('无法加载 data.json');
+            appData = await resp.json();
+            renderAll();
+        } catch (e) {
+            document.querySelector('.container').innerHTML = '<div class="error">数据加载失败：' + e.message + '</div>';
+        }
+    }
+
+    function renderAll() {
+        const d = appData;
+        document.getElementById('update-date').textContent = '数据更新: ' + d.meta.update_date;
+        renderTable('ram', d.months, d.predict_start_index, d.ram);
+        renderTable('rom', d.months, d.predict_start_index, d.rom);
+        renderTable('combined', d.months, d.predict_start_index, d.combined);
+    }
+
+    function renderTable(type, months, predictIdx, dataObj) {
+        const table = document.getElementById('table-' + type);
+        let html = '<thead><tr><th>规格 / 容量</th>';
+        months.forEach((m, i) => {
+            html += '<th' + (i >= predictIdx ? ' class="predict-col"' : '') + '>' + m + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        for (const [subType, capacities] of Object.entries(dataObj)) {
+            for (const [cap, prices] of Object.entries(capacities)) {
+                html += '<tr onclick="showChart(\'' + type + '\',\'' + subType + '\',\'' + cap + '\')" id="row-' + type + '-' + subType + '-' + cap + '">';
+                html += '<td>' + subType + ' ' + cap + '</td>';
+                prices.forEach((p, i) => {
+                    html += '<td' + (i >= predictIdx ? ' class="predict-col"' : '') + '>' + (p != null ? '$' + p.toFixed(2) : '-') + '</td>';
+                });
+                html += '</tr>';
+            }
+        }
+        html += '</tbody>';
+        table.innerHTML = html;
+        const firstRow = table.querySelector('tbody tr');
+        if (firstRow) firstRow.click();
+    }
+
+    function showChart(type, subType, cap) {
+        const d = appData;
+        const prices = d[type][subType][cap];
+        const months = d.months;
+        const predictIdx = d.predict_start_index;
+        const canvasId = 'chart-' + type;
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        if (charts[type]) charts[type].destroy();
+        charts[type] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [
+                    { label:'历史价格', data: prices.map((p,i) => i < predictIdx ? p : null), borderColor:'#534AB7', backgroundColor:'rgba(83,74,183,0.1)', fill:true, tension:0.3, pointRadius:3, pointHoverRadius:6, borderWidth:2 },
+                    { label:'预测价格', data: prices.map((p,i) => i >= predictIdx ? p : null), borderColor:'#FF9800', borderDash:[6,3], backgroundColor:'rgba(255,152,0,0.05)', fill:false, tension:0.3, pointRadius:3, pointHoverRadius:6, borderWidth:2 }
+                ]
+            },
+            options: {
+                responsive:true, maintainAspectRatio:true, animation:{duration:600},
+                plugins:{ title:{ display:true, text: subType + ' ' + cap + ' 价格走势（USD）', font:{size:15,weight:'600'}, color:'#000' }, legend:{ position:'bottom', labels:{ usePointStyle:true, padding:16 } } },
+                scales:{ y:{ beginAtZero:false, ticks:{ callback:v=>'$'+v }, grid:{ color:'rgba(0,0,0,0.06)' } }, x:{ grid:{ display:false }, ticks:{ maxRotation:45, autoSkipPadding:10 } } }
+            }
+        });
+        document.getElementById('tab-' + type).querySelector('.chart-container').scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+
+    function switchTab(type) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('tab-' + type).classList.add('active');
+    }
+
+    loadData();
+    setInterval(loadData, 120000);
+    </script>
+</body>
+</html>
