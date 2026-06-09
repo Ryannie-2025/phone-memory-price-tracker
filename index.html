@@ -29,7 +29,7 @@
         .tab-content { display:none; }
         .tab-content.active { display:block; }
         .table-wrapper { overflow-x:auto; border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); margin-bottom:20px; }
-        table { width:100%; border-collapse:collapse; font-size:13px; min-width:1200px; }
+        table { width:100%; border-collapse:collapse; font-size:13px; min-width:1000px; }
         th, td { padding:8px 10px; text-align:right; border-bottom:1px solid var(--color-border-tertiary); white-space:nowrap; }
         th:first-child, td:first-child { text-align:left; position:sticky; left:0; background:white; z-index:1; font-weight:600; min-width:140px; }
         th { background:var(--color-background-secondary); font-weight:600; font-size:12px; position:sticky; top:0; z-index:2; }
@@ -38,7 +38,9 @@
         tr:hover td:first-child { background:#f0f0ff; }
         .predict-col { background:#fffde7 !important; }
         tr:hover .predict-col { background:#f6f6c6 !important; }
-        .chart-container { margin-top:20px; padding:20px; border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); height:360px; position:relative; }
+        .longterm-col { background:#e8f5e9 !important; }
+        tr:hover .longterm-col { background:#c8e6c9 !important; }
+        .chart-container { margin-top:20px; padding:20px; border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); height: 400px; }
         .selected-row { background:#e8e6ff !important; }
         .loading { color:var(--color-text-secondary); font-size:14px; padding:40px; text-align:center; }
         .error { color:#d32f2f; font-size:14px; padding:40px; text-align:center; }
@@ -58,17 +60,17 @@
         </div>
         <div id="tab-ram" class="tab-content active">
             <div class="table-wrapper"><table id="table-ram"></table></div>
-            <div class="chart-container"><canvas id="chart-ram" height="300"></canvas></div>
+            <div class="chart-container"><canvas id="chart-ram"></canvas></div>
         </div>
         <div id="tab-rom" class="tab-content">
             <div class="table-wrapper"><table id="table-rom"></table></div>
-            <div class="chart-container"><canvas id="chart-rom" height="300"></canvas></div>
+            <div class="chart-container"><canvas id="chart-rom"></canvas></div>
         </div>
         <div id="tab-combined" class="tab-content">
             <div class="table-wrapper"><table id="table-combined"></table></div>
-            <div class="chart-container"><canvas id="chart-combined" height="300"></canvas></div>
+            <div class="chart-container"><canvas id="chart-combined"></canvas></div>
         </div>
-        <div class="note">💡 点击表格行查看价格趋势图 | 黄色背景列为预测数据 | 数据更新后页面自动刷新</div>
+        <div class="note">💡 点击表格行查看价格趋势图 | 黄色背景列为短期预测(至2026-12) | 绿色背景列为长期预测(2027-2028)</div>
     </div>
 
     <script>
@@ -89,25 +91,33 @@
     function renderAll() {
         const d = appData;
         document.getElementById('update-date').textContent = '数据更新: ' + d.meta.update_date;
-        renderTable('ram', d.months, d.predict_start_index, d.ram);
-        renderTable('rom', d.months, d.predict_start_index, d.rom);
-        renderTable('combined', d.months, d.predict_start_index, d.combined);
+        const tableColCount = 24; // Only show monthly data up to 2026-12
+        renderTable('ram', d.months, d.predict_start_index, tableColCount, d.ram);
+        renderTable('rom', d.months, d.predict_start_index, tableColCount, d.rom);
+        renderTable('combined', d.months, d.predict_start_index, tableColCount, d.combined);
     }
 
-    function renderTable(type, months, predictIdx, dataObj) {
+    function renderTable(type, months, predictIdx, tableColCount, dataObj) {
         const table = document.getElementById('table-' + type);
         let html = '<thead><tr><th>规格 / 容量</th>';
-        months.forEach((m, i) => {
-            html += '<th' + (i >= predictIdx ? ' class="predict-col"' : '') + '>' + m + '</th>';
-        });
+        // Only show first tableColCount columns (monthly data)
+        for (let i = 0; i < tableColCount && i < months.length; i++) {
+            const m = months[i];
+            let cls = '';
+            if (i >= predictIdx) cls = 'predict-col';
+            html += '<th' + (cls ? ' class="' + cls + '"' : '') + '>' + m + '</th>';
+        }
         html += '</tr></thead><tbody>';
         for (const [subType, capacities] of Object.entries(dataObj)) {
             for (const [cap, prices] of Object.entries(capacities)) {
                 html += '<tr onclick="showChart(\'' + type + '\',\'' + subType + '\',\'' + cap + '\')" id="row-' + type + '-' + subType + '-' + cap + '">';
                 html += '<td>' + subType + ' ' + cap + '</td>';
-                prices.forEach((p, i) => {
-                    html += '<td' + (i >= predictIdx ? ' class="predict-col"' : '') + '>' + (p != null ? '$' + p.toFixed(2) : '-') + '</td>';
-                });
+                for (let i = 0; i < tableColCount && i < prices.length; i++) {
+                    const p = prices[i];
+                    let cls = '';
+                    if (i >= predictIdx) cls = 'predict-col';
+                    html += '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + (p != null ? '$' + p.toFixed(2) : '-') + '</td>';
+                }
                 html += '</tr>';
             }
         }
@@ -118,30 +128,107 @@
     }
 
     function showChart(type, subType, cap) {
-        // No scroll - let user scroll naturally
+        // Remove selected class from all rows in this tab
+        const table = document.getElementById('table-' + type);
+        table.querySelectorAll('tr').forEach(r => r.classList.remove('selected-row'));
+        // Add selected class to clicked row
+        const rowId = 'row-' + type + '-' + subType + '-' + cap;
+        const row = document.getElementById(rowId);
+        if (row) row.classList.add('selected-row');
+
         const d = appData;
         const prices = d[type][subType][cap];
         const months = d.months;
         const predictIdx = d.predict_start_index;
+        const longTermIdx = d.long_term_start_index || 24;
         const canvasId = 'chart-' + type;
         const ctx = document.getElementById(canvasId).getContext('2d');
         if (charts[type]) charts[type].destroy();
+        
+        // Create datasets: historical, short-term prediction, long-term prediction
+        const historicalData = prices.map((p,i) => i < predictIdx ? p : null);
+        const shortTermData = prices.map((p,i) => (i >= predictIdx && i < longTermIdx) ? p : null);
+        const longTermData = prices.map((p,i) => i >= longTermIdx ? p : null);
+        
         charts[type] = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: months,
                 datasets: [
-                    { label:'历史价格', data: prices.map((p,i) => i < predictIdx ? p : null), borderColor:'#534AB7', backgroundColor:'rgba(83,74,183,0.1)', fill:true, tension:0.3, pointRadius:3, pointHoverRadius:6, borderWidth:2 },
-                    { label:'预测价格', data: prices.map((p,i) => i >= predictIdx ? p : null), borderColor:'#FF9800', borderDash:[6,3], backgroundColor:'rgba(255,152,0,0.05)', fill:false, tension:0.3, pointRadius:3, pointHoverRadius:6, borderWidth:2 }
+                    { 
+                        label:'历史价格', 
+                        data: historicalData, 
+                        borderColor:'#534AB7', 
+                        backgroundColor:'rgba(83,74,183,0.1)', 
+                        fill:true, 
+                        tension:0.3, 
+                        pointRadius:3, 
+                        pointHoverRadius:6, 
+                        borderWidth:2 
+                    },
+                    { 
+                        label:'短期预测 (至2026-12)', 
+                        data: shortTermData, 
+                        borderColor:'#FF9800', 
+                        borderDash:[6,3], 
+                        backgroundColor:'rgba(255,152,0,0.05)', 
+                        fill:false, 
+                        tension:0.3, 
+                        pointRadius:3, 
+                        pointHoverRadius:6, 
+                        borderWidth:2 
+                    },
+                    { 
+                        label:'长期预测 (2027-2028)', 
+                        data: longTermData, 
+                        borderColor:'#4CAF50', 
+                        borderDash:[12,6], 
+                        backgroundColor:'rgba(76,175,80,0.05)', 
+                        fill:false, 
+                        tension:0.3, 
+                        pointRadius:4, 
+                        pointHoverRadius:7, 
+                        borderWidth:2 
+                    }
                 ]
             },
             options: {
-                responsive:true, maintainAspectRatio:false, animation:{duration:600},
-                plugins:{ title:{ display:true, text: subType + ' ' + cap + ' 价格走势（USD）', font:{size:15,weight:'600'}, color:'#000' }, legend:{ position:'bottom', labels:{ usePointStyle:true, padding:16 } } },
-                scales:{ y:{ beginAtZero:false, ticks:{ callback:v=>'$'+v }, grid:{ color:'rgba(0,0,0,0.06)' } }, x:{ grid:{ display:false }, ticks:{ maxRotation:45, autoSkipPadding:10 } } }
+                responsive:true, 
+                maintainAspectRatio:false, 
+                animation:{duration:600},
+                plugins:{
+                    title:{ 
+                        display:true, 
+                        text: subType + ' ' + cap + ' 价格走势（USD）', 
+                        font:{size:15,weight:'600'}, 
+                        color:'#000' 
+                    }, 
+                    legend:{ 
+                        position:'bottom', 
+                        labels:{ 
+                            usePointStyle:true, 
+                            padding:16,
+                            font: { size: 12 }
+                        } 
+                    } 
+                },
+                scales:{
+                    y:{ 
+                        beginAtZero:false, 
+                        ticks:{ callback:v=>'$'+v }, 
+                        grid:{ color:'rgba(0,0,0,0.06)' } 
+                    }, 
+                    x:{ 
+                        grid:{ display:false }, 
+                        ticks:{ 
+                            maxRotation:45, 
+                            autoSkipPadding:10,
+                            font: { size: 11 }
+                        } 
+                    }
+                }
             }
         });
-        // scroll removed for better UX
     }
 
     function switchTab(type) {
@@ -152,19 +239,7 @@
     }
 
     loadData();
-    // Debounce resize to prevent zoom flicker
-    let resizeTimer;
-    window.addEventListener('resize', () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        Object.values(charts).forEach(c => { if(c && typeof c.resize === 'function') c.resize(); });
-      }, 300);
-    });
-
-    // Debounced reload: only reload if tab is active
-    setInterval(() => {
-      if (!document.hidden) loadData();
-    }, 120000);
+    setInterval(loadData, 120000);
     </script>
 </body>
 </html>
