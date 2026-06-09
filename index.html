@@ -38,7 +38,7 @@
         tr:hover td:first-child { background:#f0f0ff; }
         .predict-col { background:#fffde7 !important; }
         tr:hover .predict-col { background:#f6f6c6 !important; }
-        .chart-container { margin-top:20px; padding:20px; border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); }
+        .chart-container { margin-top:20px; padding:20px; border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); height:360px; position:relative; }
         .selected-row { background:#e8e6ff !important; }
         .loading { color:var(--color-text-secondary); font-size:14px; padding:40px; text-align:center; }
         .error { color:#d32f2f; font-size:14px; padding:40px; text-align:center; }
@@ -58,15 +58,15 @@
         </div>
         <div id="tab-ram" class="tab-content active">
             <div class="table-wrapper"><table id="table-ram"></table></div>
-            <div class="chart-container"><canvas id="chart-ram"></canvas></div>
+            <div class="chart-container"><canvas id="chart-ram" height="300"></canvas></div>
         </div>
         <div id="tab-rom" class="tab-content">
             <div class="table-wrapper"><table id="table-rom"></table></div>
-            <div class="chart-container"><canvas id="chart-rom"></canvas></div>
+            <div class="chart-container"><canvas id="chart-rom" height="300"></canvas></div>
         </div>
         <div id="tab-combined" class="tab-content">
             <div class="table-wrapper"><table id="table-combined"></table></div>
-            <div class="chart-container"><canvas id="chart-combined"></canvas></div>
+            <div class="chart-container"><canvas id="chart-combined" height="300"></canvas></div>
         </div>
         <div class="note">💡 点击表格行查看价格趋势图 | 黄色背景列为预测数据 | 数据更新后页面自动刷新</div>
     </div>
@@ -136,7 +136,7 @@
                 ]
             },
             options: {
-                responsive:true, maintainAspectRatio:true, animation:{duration:600},
+                responsive:true, maintainAspectRatio:false, animation:{duration:600},
                 plugins:{ title:{ display:true, text: subType + ' ' + cap + ' 价格走势（USD）', font:{size:15,weight:'600'}, color:'#000' }, legend:{ position:'bottom', labels:{ usePointStyle:true, padding:16 } } },
                 scales:{ y:{ beginAtZero:false, ticks:{ callback:v=>'$'+v }, grid:{ color:'rgba(0,0,0,0.06)' } }, x:{ grid:{ display:false }, ticks:{ maxRotation:45, autoSkipPadding:10 } } }
             }
@@ -152,7 +152,19 @@
     }
 
     loadData();
-    setInterval(loadData, 120000);
+    // Debounce resize to prevent zoom flicker
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        Object.values(charts).forEach(c => { if(c && typeof c.resize === 'function') c.resize(); });
+      }, 300);
+    });
+
+    // Debounced reload: only reload if tab is active
+    setInterval(() => {
+      if (!document.hidden) loadData();
+    }, 120000);
     </script>
 </body>
 </html>
